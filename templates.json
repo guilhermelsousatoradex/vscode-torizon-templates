@@ -21,9 +21,10 @@
             "language": "None",
             "multiContainer": true,
             "mergeCommon": {
-                "tasks": [],
+                "tasks": ["try-update-template", "try-update-template-accepting-all"],
                 "inputs": []
             },
+            "hasDockerfile": false,
             "codeWorkspace": true,
             "ignoreCommonScripts": true,
             "ignoreTorizonPackages": true,
