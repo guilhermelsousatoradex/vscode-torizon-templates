@@ -92,7 +92,7 @@ def _check_if_file_content_is_equal(file1_path, file2_path):
 
         return file1_hash == file2_hash
     except FileNotFoundError as fex:
-        if os.environ["TORIZON_TEMPLATES_UPDATER_IGNORE_MISSING_FILES"] == "True":
+        if os.environ.get("TORIZON_TEMPLATES_UPDATER_IGNORE_MISSING_FILES", "False") == "True":
             # make sure that the file missing is not the one from .apollox
             if ".apollox" not in fex.filename:
                 # so, we ignore the error copy the file1_path to file2_path
@@ -504,6 +504,7 @@ with open(tasks_path, "r") as f:
 
 # Get merge instructions
 merge_config = _template_metadata.get("mergeCommon", {})
+has_dockerfile = _template_metadata.get("hasDockerfile", True)
 task_labels_to_merge = merge_config.get("tasks", "all")
 input_ids_to_merge = merge_config.get("inputs", "all")
 
@@ -559,24 +560,27 @@ if _template_name != "tcb":
     if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile.sdk"):
         cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile.sdk") .
 
-    cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile") .
-    cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/docker-compose.yml") .
+    if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile"):
+        cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile") .
+        cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/docker-compose.yml") .
     cp -f @(f"{os.environ['HOME']}/.apollox/assets/github/workflows/build-application.yaml") .
     cp -f @(f"{os.environ['HOME']}/.apollox/assets/gitlab/.gitlab-ci.yml") .
 
     # If there is a .dockerignore file, also include it
     if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/.dockerignore"):
-        cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/.dockerignore") .
+            cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/.dockerignore") .
 
     # ----------------------------------------------------------------- TORIZONPACKAGES.JSON
     with open(f"{os.environ['HOME']}/.apollox/assets/json/torizonPackages.json", "r") as f:
         _torPackagesJson = json.load(f)
 
     # Check also the build part of Dockerfile, for the presence of torizon_packages_build
-    with open(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile", "r") as f:
-        dockerfileLines = f.readlines()
+    buildDepDockerfile = None
+    if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile"):
+        with open(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile", "r") as f:
+            dockerfileLines = f.readlines()
 
-    buildDepDockerfile = any("torizon_packages_build" in line for line in dockerfileLines)
+        buildDepDockerfile = any("torizon_packages_build" in line for line in dockerfileLines)
 
     if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile.sdk") or buildDepDockerfile:
         _torPackagesJson["buildDeps"] = []
