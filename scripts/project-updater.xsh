@@ -92,7 +92,7 @@ def _check_if_file_content_is_equal(file1_path, file2_path):
 
         return file1_hash == file2_hash
     except FileNotFoundError as fex:
-        if os.environ.get("TORIZON_TEMPLATES_UPDATER_IGNORE_MISSING_FILES", "False") == "True":
+        if os.environ["TORIZON_TEMPLATES_UPDATER_IGNORE_MISSING_FILES"] == "True":
             # make sure that the file missing is not the one from .apollox
             if ".apollox" not in fex.filename:
                 # so, we ignore the error copy the file1_path to file2_path
@@ -740,18 +740,20 @@ if _template_name != "tcb":
     # DOCKERFILE
     # all projects must have it (less TCB)
     # FIXME: should we not be more generic here? if there is tcb should be more
-    _open_merge_window(
-        f"{project_folder}/.conf/tmp/Dockerfile",
-        f"{project_folder}/Dockerfile"
-    )
+    if os.path.exists(f"{project_folder}/.conf/tmp/Dockerfile"):
+        _open_merge_window(
+            f"{project_folder}/.conf/tmp/Dockerfile",
+            f"{project_folder}/Dockerfile"
+        )
 
     print("✅ Dockerfile", color=Color.GREEN)
 
     # DOCKER-COMPOSE.YML
-    _open_merge_window(
-        f"{project_folder}/.conf/tmp/docker-compose.yml",
-        f"{project_folder}/docker-compose.yml"
-    )
+    if os.path.exists(f"{project_folder}/.conf/tmp/docker-compose.yml"):
+        _open_merge_window(
+            f"{project_folder}/.conf/tmp/docker-compose.yml",
+            f"{project_folder}/docker-compose.yml"
+        )
 
     print("✅ docker-compose.yml", color=Color.GREEN)
 
