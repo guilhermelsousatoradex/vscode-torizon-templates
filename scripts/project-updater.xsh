@@ -36,9 +36,13 @@ if len(sys.argv) < 4:
     print(
 """
 Usage:
-    project-updater.xsh <project_folder> <accept_all> <vscode> <second_run>
+    project-updater.xsh <project_folder> <project_name> <container_name> <accept_all> <vscode> <second_run>
 
         <project_folder>    The folder path where the project that will be updated is located.
+
+        <project_name>      The name of the project that will be updated.
+
+        <container_name>    The name of the container of the project that will be updated.
 
         <accept_all>        This is a bool like argument (True or False).
                             This signals if the updater should accept all the new
@@ -61,10 +65,11 @@ Usage:
 
 project_folder = get_arg_not_empty(1)
 project_name = get_arg_not_empty(2)
+container_name = get_arg_not_empty(3)
 # Check if it's True or 1
-accept_all = get_arg_not_empty(3) in ("True", "1")
-vscode = get_optional_arg(4, True)
-second_run = get_optional_arg(5, False)
+accept_all = get_arg_not_empty(4) in ("True", "1")
+vscode = get_optional_arg(5, True)
+second_run = get_optional_arg(6, False)
 
 ##
 # even tough the vscode arg is true, if the TORIZON_TEMPLATES_NON_VSCODE
@@ -209,6 +214,7 @@ if not _check_if_file_content_is_equal(
         @(f"{project_folder}/.conf/project-updater.xsh") \
         @(project_folder) \
         @(project_name) \
+        @(container_name) \
         @(accept_all) \
         @(vscode) \
         True
@@ -265,6 +271,12 @@ else:
 
 _torizonOSMajor = _project_metadata["torizonOSMajor"]
 _template_name = _project_metadata['templateName']
+
+# support to update the custom fields
+_has_custom_fields = _project_metadata.get('hasCustomFields', False)
+_custom_fields = []
+if _has_custom_fields:
+    _custom_fields = _project_metadata['customFields']
 
 # signalize if the user is under a torizonOSMajor not 7
 if _torizonOSMajor != "7":
@@ -492,6 +504,7 @@ with open(tasks_path, "r") as f:
 
 # Get merge instructions
 merge_config = _template_metadata.get("mergeCommon", {})
+has_dockerfile = _template_metadata.get("hasDockerfile", True)
 task_labels_to_merge = merge_config.get("tasks", "all")
 input_ids_to_merge = merge_config.get("inputs", "all")
 
@@ -519,10 +532,10 @@ project_settings_path = f"{project_folder}/.conf/tmp/settings-next.json"
 try:
     with open(common_settings_path, "r") as f:
         _common_settings = json.load(f)
-        
+
     with open(project_settings_path, "r") as f:
         _proj_settings = json.load(f)
-        
+
 except FileNotFoundError:
     raise FileNotFoundError("Missing settings.json or common.json file.")
 
@@ -547,24 +560,27 @@ if _template_name != "tcb":
     if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile.sdk"):
         cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile.sdk") .
 
-    cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile") .
-    cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/docker-compose.yml") .
+    if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile"):
+        cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile") .
+        cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/docker-compose.yml") .
     cp -f @(f"{os.environ['HOME']}/.apollox/assets/github/workflows/build-application.yaml") .
     cp -f @(f"{os.environ['HOME']}/.apollox/assets/gitlab/.gitlab-ci.yml") .
 
     # If there is a .dockerignore file, also include it
     if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/.dockerignore"):
-        cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/.dockerignore") .
+            cp -f @(f"{os.environ['HOME']}/.apollox/{_template_name}/.dockerignore") .
 
     # ----------------------------------------------------------------- TORIZONPACKAGES.JSON
     with open(f"{os.environ['HOME']}/.apollox/assets/json/torizonPackages.json", "r") as f:
         _torPackagesJson = json.load(f)
 
     # Check also the build part of Dockerfile, for the presence of torizon_packages_build
-    with open(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile", "r") as f:
-        dockerfileLines = f.readlines()
+    buildDepDockerfile = None
+    if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile"):
+        with open(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile", "r") as f:
+            dockerfileLines = f.readlines()
 
-    buildDepDockerfile = any("torizon_packages_build" in line for line in dockerfileLines)
+        buildDepDockerfile = any("torizon_packages_build" in line for line in dockerfileLines)
 
     if os.path.exists(f"{os.environ['HOME']}/.apollox/{_template_name}/Dockerfile.sdk") or buildDepDockerfile:
         _torPackagesJson["buildDeps"] = []
@@ -634,7 +650,14 @@ for root, dirs, files in os.walk("."):
             content = f.read()
 
         content = content.replace("__change__", project_name)
-        content = content.replace("__container__", _project_metadata["containerName"])
+
+        if not _has_custom_fields:
+            content = content.replace("__container__", container_name)
+        else:
+            # also check for ids from the custom fields
+            for _field in _custom_fields:
+                content = content.replace(f"__{_field['id']}__", _field['value'])
+
         content = content.replace("__home__", os.environ["HOME"])
         content = content.replace("__templateFolder__", _template_name)
 
@@ -717,18 +740,20 @@ if _template_name != "tcb":
     # DOCKERFILE
     # all projects must have it (less TCB)
     # FIXME: should we not be more generic here? if there is tcb should be more
-    _open_merge_window(
-        f"{project_folder}/.conf/tmp/Dockerfile",
-        f"{project_folder}/Dockerfile"
-    )
+    if os.path.exists(f"{project_folder}/.conf/tmp/Dockerfile"):
+        _open_merge_window(
+            f"{project_folder}/.conf/tmp/Dockerfile",
+            f"{project_folder}/Dockerfile"
+        )
 
     print("✅ Dockerfile", color=Color.GREEN)
 
     # DOCKER-COMPOSE.YML
-    _open_merge_window(
-        f"{project_folder}/.conf/tmp/docker-compose.yml",
-        f"{project_folder}/docker-compose.yml"
-    )
+    if os.path.exists(f"{project_folder}/.conf/tmp/docker-compose.yml"):
+        _open_merge_window(
+            f"{project_folder}/.conf/tmp/docker-compose.yml",
+            f"{project_folder}/docker-compose.yml"
+        )
 
     print("✅ docker-compose.yml", color=Color.GREEN)
 
