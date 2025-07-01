@@ -21,7 +21,7 @@
             "language": "None",
             "multiContainer": true,
             "mergeCommon": {
-                "tasks": [],
+                "tasks": ["try-update-template", "try-update-template-accepting-all"],
                 "inputs": []
             },
             "codeWorkspace": true,
